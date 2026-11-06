@@ -37,6 +37,7 @@ type MeterInfo struct {
 	TotalPackets int     `json:"total_packets"`
 	CostCZK      float64 `json:"cost_czk"`
 	EnergyKWh    float64 `json:"energy_kwh"`
+	IsMine       bool    `json:"is_mine"`
 }
 
 type ReadingRecord struct {
@@ -54,6 +55,20 @@ type SummaryStats struct {
 	TotalKWh    float64 `json:"total_kwh"`
 	TotalGJ     float64 `json:"total_gj"`
 	LastUpdated string  `json:"last_updated"`
+
+	// Observatoř flat (35 m², 5. NP pod střechou, Kp = 0.85)
+	AptMeters         int     `json:"apt_meters"`
+	AptAreaM2         float64 `json:"apt_area_m2"`
+	AptFloor          int     `json:"apt_floor"`
+	AptFloorKp        float64 `json:"apt_floor_kp"`
+	AptRawUnits       float64 `json:"apt_raw_units"`
+	AptCorrectedUnits float64 `json:"apt_corrected_units"`
+	AptCostCZK        float64 `json:"apt_cost_czk"`
+	AptEnergyKWh      float64 `json:"apt_energy_kwh"`
+	AptPrevUnits      float64 `json:"apt_prev_units"`
+	AptPrevCZK        float64 `json:"apt_prev_czk"`
+	AptBaseShareCZK   float64 `json:"apt_base_share_czk"`
+	AptSavingsCZK     float64 `json:"apt_savings_czk"`
 }
 
 var (
@@ -102,6 +117,7 @@ func loadFromDatabase(dbFile string) error {
 				}
 				m.CostCZK = m.LastHCA * PRICE_PER_UNIT
 				m.EnergyKWh = m.LastHCA * KWH_PER_UNIT
+				m.IsMine = (m.ID == 18466474 || m.ID == 18466473 || strings.Contains(strings.ToLower(m.RoomLabel), "observat") || strings.Contains(strings.ToLower(m.RoomLabel), "koupeln"))
 				meters[m.ID] = &m
 			}
 		}
@@ -181,11 +197,18 @@ func loadFromJSONL(jsonlFile string) error {
 			m.CostCZK = m.LastHCA * PRICE_PER_UNIT
 			m.EnergyKWh = m.LastHCA * KWH_PER_UNIT
 		} else {
+			isMine := (id == 18466474 || id == 18466473)
+			rLabel := fmt.Sprintf("Radiátor #%d", id)
+			if id == 18466474 {
+				rLabel = "Observatoř"
+			} else if id == 18466473 {
+				rLabel = "Koupelna"
+			}
 			meters[id] = &MeterInfo{
 				ID:           id,
 				Manufacturer: mfg,
 				Model:        "Heat Cost Allocator",
-				RoomLabel:    fmt.Sprintf("Radiátor #%d", id),
+				RoomLabel:    rLabel,
 				FirstSeen:    timeStr,
 				LastSeen:     timeStr,
 				LastHCA:      hcaVal,
@@ -194,6 +217,7 @@ func loadFromJSONL(jsonlFile string) error {
 				TotalPackets: 1,
 				CostCZK:      hcaVal * PRICE_PER_UNIT,
 				EnergyKWh:    hcaVal * KWH_PER_UNIT,
+				IsMine:       isMine,
 			}
 		}
 	}
@@ -222,16 +246,36 @@ func getSummaryStats() SummaryStats {
 
 	totalUnits := 0.0
 	lastTs := ""
+	aptRawUnits := 0.0
+	aptPrevUnits := 0.0
+	aptMeters := 0
+
 	for _, m := range meters {
 		totalUnits += m.LastHCA
 		if m.LastSeen > lastTs {
 			lastTs = m.LastSeen
+		}
+		// Match user's meters: 18466474 (Observatoř), 18466473 (Koupelna)
+		if m.ID == 18466474 || m.ID == 18466473 || strings.Contains(strings.ToLower(m.RoomLabel), "observat") || strings.Contains(strings.ToLower(m.RoomLabel), "koupeln") {
+			aptRawUnits += m.LastHCA
+			aptPrevUnits += m.PrevHCA
+			aptMeters++
 		}
 	}
 
 	totalCZK := totalUnits * PRICE_PER_UNIT
 	totalKWh := totalUnits * KWH_PER_UNIT
 	totalGJ := totalKWh * 0.0036
+
+	aptArea := 35.0
+	aptFloor := 5
+	aptKp := 0.85 // Vyhláška 269/2015 Sb. - poslední podlaží pod střechou
+	aptCorrected := aptRawUnits * aptKp
+	aptCZK := aptCorrected * PRICE_PER_UNIT
+	aptKWh := aptCorrected * KWH_PER_UNIT
+	aptPrevCZK := (aptPrevUnits * aptKp) * PRICE_PER_UNIT
+	aptBaseCZK := aptArea * 140.0 // Paušální základní složka za m² na rok
+	aptSavingsCZK := (aptRawUnits - aptCorrected) * PRICE_PER_UNIT
 
 	return SummaryStats{
 		TotalMeters: len(meters),
@@ -240,6 +284,19 @@ func getSummaryStats() SummaryStats {
 		TotalKWh:    totalKWh,
 		TotalGJ:     totalGJ,
 		LastUpdated: lastTs,
+
+		AptMeters:         aptMeters,
+		AptAreaM2:         aptArea,
+		AptFloor:          aptFloor,
+		AptFloorKp:        aptKp,
+		AptRawUnits:       aptRawUnits,
+		AptCorrectedUnits: aptCorrected,
+		AptCostCZK:        aptCZK,
+		AptEnergyKWh:      aptKWh,
+		AptPrevUnits:      aptPrevUnits,
+		AptPrevCZK:        aptPrevCZK,
+		AptBaseShareCZK:   aptBaseCZK,
+		AptSavingsCZK:     aptSavingsCZK,
 	}
 }
 
@@ -653,6 +710,51 @@ const dashboardTemplate = `
         </div>
     </div>
 
+    <!-- Observatoř Apartment Spotlight -->
+    <div style="background: linear-gradient(135deg, rgba(255, 87, 34, 0.08), rgba(0, 188, 212, 0.04)); border: 1px solid rgba(255, 87, 34, 0.35); border-radius: 12px; padding: 18px 22px; margin-bottom: 22px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 10px;">
+            <div>
+                <h2 style="font-size: 16px; font-weight: 700; color: var(--accent-fire); display: flex; align-items: center; gap: 8px;">
+                    ★ Byt Observatoř // Moje spotřeba & Rozpočítání
+                </h2>
+                <p style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">
+                    Plocha: <strong style="color: var(--text-main);">{{printf "%.0f" .Stats.AptAreaM2}} m²</strong> • Poslední podlaží (<strong style="color: var(--text-main);">{{.Stats.AptFloor}}. patro pod střechou</strong>) • Zákonný koeficient polohy <strong style="color: var(--accent-cyan);">Kp = {{printf "%.2f" .Stats.AptFloorKp}}</strong> (-15 % úspora dle vyhl. 269/2015 Sb.)
+                </p>
+            </div>
+            <div style="text-align: right;">
+                <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); display: block;">Měřiče v bytě</span>
+                <strong style="color: var(--accent-green); font-size: 13px;">#18466474 (Observatoř) • #18466473 (Koupelna)</strong>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;">
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 12px 16px;">
+                <div class="stat-label">Náměr v bytě</div>
+                <div class="stat-value" style="color: var(--accent-fire); font-size: 22px;">{{printf "%.1f" .Stats.AptRawUnits}} <span style="font-size: 13px;">dílků</span></div>
+                <div class="stat-sub">Korigováno (Kp 0.85): <strong>{{printf "%.1f" .Stats.AptCorrectedUnits}}</strong> dílků</div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 12px 16px;">
+                <div class="stat-label">Spotřební složka (Kč)</div>
+                <div class="stat-value" style="color: var(--accent-amber); font-size: 22px;">{{printf "%.2f" .Stats.AptCostCZK}} <span style="font-size: 13px;">Kč</span></div>
+                <div class="stat-sub">Úspora díky Kp 0.85: <strong>-{{printf "%.1f" .Stats.AptSavingsCZK}} Kč</strong></div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 12px 16px;">
+                <div class="stat-label">Tepelná energie bytu</div>
+                <div class="stat-value" style="color: var(--accent-cyan); font-size: 22px;">{{printf "%.0f" .Stats.AptEnergyKWh}} <span style="font-size: 13px;">kWh</span></div>
+                <div class="stat-sub">Odevzdáno do místností</div>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 12px 16px;">
+                <div class="stat-label">Základní složka (Paušál)</div>
+                <div class="stat-value" style="color: var(--text-main); font-size: 22px;">~{{printf "%.0f" .Stats.AptBaseShareCZK}} <span style="font-size: 13px;">Kč/rok</span></div>
+                <div class="stat-sub">Paušál 35 m² (~408 Kč/měsíc)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Celý dům (všechny zachycené měřiče) -->
     <div class="stats-grid">
         <div class="stat-card">
             <div class="stat-label">Naměřená spotřeba</div>
@@ -698,10 +800,10 @@ const dashboardTemplate = `
             </thead>
             <tbody>
                 {{range .Meters}}
-                <tr>
-                    <td><strong>#{{.ID}}</strong></td>
+                <tr{{if .IsMine}} style="background: rgba(255, 87, 34, 0.08);"{{end}}>
+                    <td><strong>#{{.ID}}</strong>{{if .IsMine}} <span style="background: rgba(255, 87, 34, 0.2); color: var(--accent-fire); font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: 600;">MOJE TĚLESO</span>{{end}}</td>
                     <td><span class="tag-mfg">{{.Manufacturer}}</span></td>
-                    <td>{{.RoomLabel}}</td>
+                    <td><strong{{if .IsMine}} style="color: var(--accent-fire);"{{end}}>{{.RoomLabel}}</strong></td>
                     <td><strong style="color: var(--accent-fire);">{{printf "%.1f" .LastHCA}}</strong></td>
                     <td style="color: var(--text-muted);">{{printf "%.1f" .PrevHCA}}</td>
                     <td class="price-badge">{{printf "%.1f Kč" .CostCZK}}</td>

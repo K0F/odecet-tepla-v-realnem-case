@@ -151,6 +151,22 @@ $$N_{\text{korig}} = N_{\text{náměr}} \times K_Q \times K_C \times K_P$$
 
 ---
 
+### Příklad z praxe: Byt Observatoř (35 m², 5. patro – pod střechou)
+
+- **Parametry bytu:** Podlahová plocha **$35\text{ m}^2$**, 5. patro (poslední podlaží pod střechou).
+- **Zákonný koeficient polohy:** Pro místnosti přímo pod střechou činí **$K_P = 0.85$** (sleva 15 % ze spotřebních jednotek na kompenzaci tepelných ztrát stropem).
+- **Radiátory v bytě:**
+  1. `18466474` (**Observatoř**): **$307.0\text{ dílků}$** (minule $274.0$)
+  2. `18466473` (**Koupelna**): **$121.0\text{ dílků}$** (minule $100.0$)
+- **Výpočet spotřeby:**
+  - Hrubý součet náměrů: $307.0 + 121.0 = \mathbf{428.0\text{ dílků}}$
+  - Korigovaný součet ($K_P = 0.85$): $428.0 \times 0.85 = \mathbf{363.8\text{ dílků}}$
+  - **Odhad spotřební složky (2.80 Kč/dílek):** $363.8 \times 2.80\text{ Kč} = \mathbf{1\,018.60\text{ Kč}}$ (~$2\,219\text{ kWh}$)
+  - **Základní složka za plochu ($35\text{ m}^2$):** Běžně cca 140 Kč/m²/rok $\rightarrow$ **cca 4 900 Kč / rok** (~408 Kč / měsíc)
+  - **Celkový roční náklad za teplo pro byt:** cca **5 900 Kč až 6 200 Kč / rok** (vytápění je velmi úsporné).
+
+---
+
 ## 6. Jak si zkontrolovat vyúčtování (Krok za krokem)
 
 1. **Krok 1 (Silvestr / 31. 12. půlnoc):**
