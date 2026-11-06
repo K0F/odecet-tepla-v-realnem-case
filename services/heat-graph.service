@@ -1,0 +1,16 @@
+[Unit]
+Description=Observatoř Heating Dashboard SOB23 (Go ECharts)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/rtl_sdr-heat_wmbus_parser
+ExecStart=/root/rtl_sdr-heat_wmbus_parser/heat_graph -db /root/rtl_sdr-heat_wmbus_parser/data/heat_meters.db -jsonl /root/rtl_sdr-heat_wmbus_parser/data/heat_meters.jsonl -p 8082
+Restart=always
+RestartSec=5
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

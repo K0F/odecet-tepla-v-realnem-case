@@ -1,0 +1,14 @@
+# Binaries
+heat_graph
+heat_graph_arm64
+
+# Runtime data & logs
+*.db
+*.db-journal
+*.jsonl
+*.log
+
+# OS & Editor
+.DS_Store
+.idea/
+.vscode/
